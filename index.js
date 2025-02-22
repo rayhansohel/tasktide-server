@@ -24,11 +24,12 @@ const client = new MongoClient(uri, {
 
 // Initialize Socket.IO for real-time communication
 const server = require("http").createServer(app);
-const io = socketIo(server); // Initialize socket.io with server
+const io = socketIo(server);
 
 // Initialize Database
 async function run() {
   try {
+    await client.connect(); // Ensure MongoDB connection
     console.log("Connected to MongoDB!");
 
     // MongoDB database and collections
@@ -51,23 +52,31 @@ async function run() {
     app.post("/users", async (req, res) => {
       const user = req.body;
       const existingUser = await userCollection.findOne({ email: user.email });
+
       if (existingUser) {
-        return res.send({ message: "User already exists", insertedId: null });
+        return res.status(409).json({ message: "User already exists" });
       }
+
       const result = await userCollection.insertOne(user);
-      res.send(result);
+      res.status(201).json(result);
     });
 
     // Fetch all users
     app.get("/users", async (req, res) => {
-      const users = await userCollection.find().toArray();
-      res.json(users);
+      try {
+        const users = await userCollection.find().toArray();
+        res.status(200).json(users);
+      } catch (error) {
+        console.error("Error fetching users:", error);
+        res.status(500).json({ message: "Internal server error" });
+      }
     });
 
     // Task Related API
     // Create a new task
     app.post("/tasks", async (req, res) => {
       const { title, description, category, email } = req.body;
+
       if (!title || title.length > 50) {
         return res.status(400).json({ message: "Invalid task title" });
       }
@@ -84,7 +93,7 @@ async function run() {
         const result = await taskCollection.insertOne(task);
         res.status(201).json(result);
       } catch (error) {
-        console.error(error);
+        console.error("Error saving task:", error);
         res.status(500).json({ message: "Error saving task" });
       }
     });
@@ -96,12 +105,12 @@ async function run() {
       if (!email) {
         return res.status(400).json({ message: "Email is required" });
       }
-      
+
       try {
         const tasks = await taskCollection.find({ email }).toArray();
         res.status(200).json({ tasks });
       } catch (error) {
-        console.error(error);
+        console.error("Error fetching tasks:", error);
         res.status(500).json({ message: "Error fetching tasks" });
       }
     });
@@ -111,18 +120,23 @@ async function run() {
       const { id } = req.params;
       const updatedTask = req.body;
 
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "Invalid task ID" });
+      }
+
       try {
         const result = await taskCollection.updateOne(
           { _id: new ObjectId(id) },
           { $set: updatedTask }
         );
+
         if (result.matchedCount > 0) {
           res.json({ message: "Task updated successfully" });
         } else {
           res.status(404).json({ message: "Task not found" });
         }
       } catch (error) {
-        console.error(error);
+        console.error("Error updating task:", error);
         res.status(500).json({ message: "Error updating task" });
       }
     });
@@ -130,6 +144,10 @@ async function run() {
     // Delete task
     app.delete("/tasks/:id", async (req, res) => {
       const { id } = req.params;
+
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ message: "Invalid task ID" });
+      }
 
       try {
         const result = await taskCollection.deleteOne({
@@ -142,14 +160,22 @@ async function run() {
           res.status(404).json({ message: "Task not found" });
         }
       } catch (error) {
-        console.error(error);
+        console.error("Error deleting task:", error);
         res.status(500).json({ message: "Error deleting task" });
       }
+    });
+
+    // Handle server close to properly disconnect from MongoDB
+    process.on("SIGINT", async () => {
+      await client.close();
+      console.log("MongoDB connection closed");
+      process.exit(0);
     });
   } catch (error) {
     console.error("Error connecting to database:", error);
   }
 }
+
 run().catch(console.dir);
 
 // Start Server
