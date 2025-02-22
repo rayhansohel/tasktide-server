@@ -24,7 +24,7 @@ TaskTide is a task management application that provides a robust backend using E
 ### Steps to Run Locally
 1. Clone the repository:
    ```sh
-   git clone https://github.com/yourusername/tasktide.git
+   git clone https://github.com/rayhansohel/tasktide-srver.git
    cd tasktide/backend
    ```
 2. Install dependencies:
