@@ -1,9 +1,10 @@
 const express = require("express");
-const app = express();
 const cors = require("cors");
-const jwt = require("jsonwebtoken");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const socketIo = require("socket.io");
 require("dotenv").config();
 
+const app = express();
 const port = process.env.PORT || 5000;
 
 // Middlewares
@@ -11,7 +12,6 @@ app.use(cors());
 app.use(express.json());
 
 // MongoDB connection
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = `mongodb+srv://${process.env.MONGO_USER}:${process.env.MONGO_PASS}@cluster0.62t6y.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
 const client = new MongoClient(uri, {
@@ -22,6 +22,10 @@ const client = new MongoClient(uri, {
   },
 });
 
+// Initialize Socket.IO for real-time communication
+const server = require("http").createServer(app);
+const io = socketIo(server); // Initialize socket.io with server
+
 // Initialize Database
 async function run() {
   try {
@@ -31,6 +35,16 @@ async function run() {
     const db = client.db("tasktide");
     const userCollection = db.collection("users");
     const taskCollection = db.collection("tasks");
+
+    // MongoDB Change Stream for tasks
+    const taskChangeStream = taskCollection.watch();
+
+    // Emit real-time updates to frontend when a task is added
+    taskChangeStream.on("change", (change) => {
+      if (change.operationType === "insert") {
+        io.emit("taskAdded", change.fullDocument);
+      }
+    });
 
     // User Related API
     // Store new user in the database
@@ -143,6 +157,7 @@ app.get("/", (req, res) => {
   res.send("Server is Running");
 });
 
-app.listen(port, () => {
+// Start the HTTP server with Socket.IO
+server.listen(port, () => {
   console.log(`Server is running on port ${port}`);
 });
